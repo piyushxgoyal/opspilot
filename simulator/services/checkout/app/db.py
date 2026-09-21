@@ -8,6 +8,7 @@ created per request and always closed after use.
 """
 
 from collections.abc import Generator
+from functools import lru_cache
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -19,28 +20,25 @@ class Base(DeclarativeBase):
     """Base class for SQLAlchemy ORM models."""
 
 
-settings = get_settings()
+@lru_cache
+def get_session_factory() -> sessionmaker[Session]:
+    """Return the process-wide SQLAlchemy session factory."""
+    engine = create_engine(
+        get_settings().database_url,
+        pool_pre_ping=True,
+    )
 
-engine = create_engine(
-    settings.database_url,
-    pool_pre_ping=True,
-)
-
-SessionLocal = sessionmaker(
-    bind=engine,
-    class_=Session,
-    autoflush=False,
-    autocommit=False,
-)
+    return sessionmaker(
+        bind=engine,
+        class_=Session,
+        autoflush=False,
+        autocommit=False,
+    )
 
 
 def get_db() -> Generator[Session, None, None]:
-    """Yield a database session for the lifetime of a request.
-
-    The session is closed even when the request raises an exception.
-    Transaction commits remain explicit in the calling code.
-    """
-    db = SessionLocal()
+    """Yield a database session for the lifetime of a request."""
+    db = get_session_factory()()
 
     try:
         yield db
